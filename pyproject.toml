@@ -1,0 +1,173 @@
+[project]
+name = "mersal_gcp_pubsub"
+dynamic = ["version"]
+description = "Google Cloud Pub/Sub implementation for Mersal"
+authors = [
+    { name = "Abdulhaq Emhemmed", email = "abdulhaq.emhemmed@gmail.com" }
+]
+dependencies = [
+    "mersal",
+    "google-cloud-pubsub",
+    "anyio",
+]
+readme = "README.md"
+requires-python = ">= 3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["service bus", "message bus", "messaging", "gcp", "pubsub", "google cloud"]
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development",
+  "Typing :: Typed",
+  "Intended Audience :: Developers",
+]
+
+[project.urls]
+Homepage = "https://github.com/mersal-org/mersal-gcp-pubsub"
+Documentation = "https://docs.mersal.dev"
+Repository = "https://github.com/mersal-org/mersal-gcp-pubsub"
+Changelog = "https://github.com/mersal-org/mersal-gcp-pubsub/releases"
+"Issue Tracker" = "https://github.com/mersal-org/mersal-gcp-pubsub/issues"
+
+[dependency-groups]
+dev = [
+  { include-group = "docs" },
+  { include-group = "linting" },
+  { include-group = "test" },
+]
+docs = [
+    "furo",
+    "sphinx",
+    "roman-numerals-py",
+    "sphinx-autobuild",
+    "sphinx-copybutton",
+    "sphinx-design",
+    'mersal',
+]
+linting = [
+    "basedpyright",
+    "mypy",
+    "pre-commit",
+    "ruff",
+    "ty",
+]
+test = [
+    "pytest",
+    "anyio",
+]
+
+[tool.uv]
+managed = true
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+log_cli = true
+
+[tool.ruff]
+include = [
+  "mersal_gcp_pubsub/**/*.{py,pyi}",
+  "tests/**/*.{py,pyi}",
+  "docs/examples/**/*.{py,pyi}",
+  "pyproject.toml"
+]
+target-version = "py311"
+line-length = 120
+
+src = [
+  "mersal_gcp_pubsub",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"**/testing/**/*.py" = [
+  "S101", # flake8-bandit - use of assert detected
+]
+"**/tests/**/*.py" = [
+  "B017", # flake8-bugbear - assert-raises-exception
+  "N818", # pep8-naming - error-suffix-on-exception-name
+  "S101", # flake8-bandit - use of assert detected
+]
+"**/*/conftest.py" = [
+  "F403", # Pyflakes - undefined-local-with-import-star
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+"mersal",
+"mersal_testing",
+"mersal_gcp_pubsub",
+]
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mersal_gcp_pubsub"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.sdist]
+dev-mode-dirs = ["."]
+exclude = ["/.github", "/docs"]
+
+# Type checking configuration
+[tool.mypy]
+python_version = "3.11"
+enable_error_code = [
+  "truthy-bool",
+  "truthy-iterable",
+  "unused-awaitable",
+  "ignore-without-code",
+  "possibly-undefined",
+  "redundant-self",
+]
+packages = [
+  "mersal_gcp_pubsub",
+]
+disallow_any_generics = false
+local_partial_types = true
+show_error_codes = true
+strict = true
+warn_unreachable = true
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.11"
+include = [
+  "mersal_gcp_pubsub",
+  "tests",
+]
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.src]
+include = [
+  "mersal_gcp_pubsub",
+]

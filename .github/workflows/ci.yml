@@ -1,0 +1,179 @@
+name: Tests And Linting
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # hatch-vcs needs the full history/tags to compute the version
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          install: false
+          cache: true
+          experimental: true
+
+      - name: Set up Python and create virtual environment
+        run: mise run install
+
+      - name: Load cached Pre-Commit Dependencies
+        id: cached-pre-commit-dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pre-commit/
+          key: pre-commit|${{ env.pythonLocation }}|${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Execute Pre-Commit
+        run: mise run lint:pre-commit
+
+  ty:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # hatch-vcs needs the full history/tags to compute the version
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          install: false
+          cache: true
+          experimental: true
+
+      - name: Set up Python and create virtual environment
+        run: mise run install
+
+      - name: Run ty
+        run: mise run type-check:ty
+
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # hatch-vcs needs the full history/tags to compute the version
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          install: false
+          cache: true
+          experimental: true
+
+      - name: Set up Python and create virtual environment
+        run: mise run install
+
+      - name: Run mypy
+        run: mise run type-check:mypy
+
+  pyright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # hatch-vcs needs the full history/tags to compute the version
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          install: false
+          cache: true
+          experimental: true
+
+      - name: Set up Python and create virtual environment
+        run: mise run install
+
+      - name: Run pyright
+        run: mise run type-check:pyright
+
+  test:
+    name: "test (${{ matrix.python-version }}"
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+        os: ["ubuntu-latest"]
+    uses: ./.github/workflows/test.yml
+    with:
+      coverage: false
+      python-version: ${{ matrix.python-version }}
+      os: ${{ matrix.os }}
+
+  build-docs:
+    needs:
+      - validate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # hatch-vcs needs the full history/tags to compute the version
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          install: false
+          cache: true
+          experimental: true
+
+      - name: Set up Python and create virtual environment
+        run: mise run install
+
+      - name: Build docs
+        run: mise run docs
+
+      - name: Check docs links
+        run: mise run docs:linkcheck
