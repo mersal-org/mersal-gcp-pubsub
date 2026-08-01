@@ -1,5 +1,9 @@
-__all__ = ("hello",)
+from importlib.metadata import version
 
 
-def hello() -> str:
-    return "Hello from mersal-gcp-pubsub!"
+def __getattr__(name: str) -> str:
+    if name != "__version__":
+        msg = f"module {__name__!r} has no attribute {name!r}"
+        raise AttributeError(msg)
+
+    return version("mersal_gcp_pubsub")

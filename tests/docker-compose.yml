@@ -1,0 +1,11 @@
+version: "3"
+
+services:
+  # Official Google Cloud SDK image bundling the Pub/Sub emulator. Swap the image (or
+  # tag) here if you'd rather run a different/updated build - `conftest.py` only cares
+  # that something answers on 8085 speaking the Pub/Sub emulator protocol.
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+    ports:
+      - "8085:8085"
+    command: gcloud beta emulators pubsub start --project="random-project-id" --host-port=0.0.0.0:8085

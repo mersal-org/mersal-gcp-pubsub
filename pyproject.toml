@@ -23,6 +23,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python",
   "Topic :: Software Development :: Libraries",
   "Topic :: Software Development",
@@ -61,6 +62,7 @@ linting = [
 ]
 test = [
     "pytest",
+    "pytest-cov",
     "anyio",
 ]
 
@@ -155,6 +157,11 @@ local_partial_types = true
 show_error_codes = true
 strict = true
 warn_unreachable = true
+
+[[tool.mypy.overrides]]
+# google-cloud-pubsub ships no py.typed marker on `google.cloud.pubsub_v1`.
+module = ["google.cloud.pubsub_v1.*"]
+ignore_missing_imports = true
 
 [tool.basedpyright]
 typeCheckingMode = "standard"

@@ -11,6 +11,24 @@ Quickstart
 
     uv add mersal_gcp_pubsub
 
+.. code-block:: python
+
+    from mersal.app import Mersal
+    from mersal_gcp_pubsub.plugin import GCPPubSubPluginConfig
+
+    gcp_pubsub_plugin_config = GCPPubSubPluginConfig(
+        project_id="my-gcp-project",
+        input_queue_name="my-app",
+    )
+
+    app = Mersal(
+        "my-app",
+        activator,
+        plugins=[gcp_pubsub_plugin_config.plugin()],
+    )
+
+    await app.start()
+
 See :doc:`usage <./usage>` for more info.
 
 
@@ -21,6 +39,7 @@ See :doc:`usage <./usage>` for more info.
 
    Home <self>
    usage
+   implementation_details
    reference
 
 
