@@ -83,8 +83,7 @@ Key ``GCPPubSubPluginConfig`` fields:
     Let the transport manage its own topics/subscriptions. Set to ``False`` if that
     piece of topology is managed externally instead (e.g. by infrastructure-as-code).
 
-``direct_topic_prefix`` / ``event_topic_prefix`` (default ``"mersal-direct-"`` /
-``"mersal-topic-"``)
+``direct_topic_prefix`` / ``event_topic_prefix`` (default ``"mersal-direct-"`` / ``"mersal-topic-"``)
     Prefixes used to derive GCP topic ids from Mersal addresses/topics - see
     :doc:`implementation_details` for why these exist. If you're also using
     :py:class:`~mersal_gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage`
