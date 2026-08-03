@@ -129,3 +129,46 @@ class TestGCPPubSubPlugin:
             assert received == [Greeting(text="hello")]
         finally:
             await app.stop()
+
+    async def test_send_only_app_can_send_to_a_receiving_app(
+        self,
+        project_id: str,
+        event_topic_prefix: str,
+    ) -> None:
+        """A send-only app (`Mersal(..., send_only=True)`) still gets a working
+        transport wired up by `GCPPubSubPlugin`, proving `configurator.send_only`
+        reaches `GCPPubSubTransportConfig`.
+        """
+        receiver_queue_name = f"plugin-test-receiver-{uuid.uuid4()}"
+        sender_queue_name = f"plugin-test-sender-{uuid.uuid4()}"
+        receiver, received, done = self._make_app(project_id, event_topic_prefix, receiver_queue_name)
+
+        sender_plugin_config = GCPPubSubPluginConfig(
+            project_id=project_id,
+            input_queue_name=sender_queue_name,
+            event_topic_prefix=event_topic_prefix,
+            consumer_health_check_interval=None,
+        )
+        sender = Mersal(
+            "plugin-test-sender",
+            BuiltinHandlerActivator(),
+            plugins=[sender_plugin_config.plugin()],
+            serializer=_JsonSerializer(types={Greeting}),
+            send_only=True,
+        )
+
+        try:
+            await receiver.start()
+            await sender.start()
+
+            assert sender.worker is None
+
+            await sender.send(Greeting(text="hello"), addresses={receiver_queue_name})
+
+            with anyio.fail_after(5.0):
+                await done.wait()
+
+            assert received == [Greeting(text="hello")]
+        finally:
+            await sender.stop()
+            await receiver.stop()

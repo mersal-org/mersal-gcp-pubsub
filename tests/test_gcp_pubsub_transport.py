@@ -41,6 +41,7 @@ class TestGCPPubSubTransport:
 
         state = transport._state
         assert state is not None
+        assert state.own_consumer is not None
         subscription = state.subscriber.get_subscription(subscription=state.own_consumer.subscription_path)
         assert subscription.name == state.own_consumer.subscription_path
 
@@ -203,6 +204,7 @@ class TestGCPPubSubTransportSpecificBehaviour:
         await receiver()
         state = receiver._state
         assert state is not None
+        assert state.own_consumer is not None
 
         state.own_consumer.future.cancel()
         with anyio.fail_after(self.receive_deadline):

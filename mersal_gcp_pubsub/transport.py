@@ -43,6 +43,11 @@ _RESERVED_PUBLISH_ATTRIBUTE_KEYS = frozenset({"ordering_key", "retry", "timeout"
 class GCPPubSubTransportConfig:
     project_id: str
     input_queue_name: str
+    send_only: bool = False
+    """Set by `GCPPubSubPlugin` from the owning app's `send_only` configuration - a
+    send-only app never receives, so this transport skips creating its own topic,
+    subscription, and pull consumer entirely.
+    """
     should_declare_topics: bool = True
     should_declare_subscriptions: bool = True
     direct_topic_prefix: str = "mersal-direct-"
@@ -104,7 +109,9 @@ class _StartedState:
 
     publisher: PublisherClient
     subscriber: SubscriberClient
-    own_consumer: _Consumer
+    own_consumer: _Consumer | None
+    """None for a send-only transport, which never creates its own topic,
+    subscription, or pull consumer."""
     topic_consumers: dict[str, _Consumer]
     """Live consumers for pub/sub topics this app's own address is subscribed to,
     keyed by Mersal topic name. Populated dynamically by `start_consuming_topic` -
@@ -154,6 +161,11 @@ class GCPPubSubTransport(BaseTransport):
 
     Self-healing:
         See `GCPPubSubTransportConfig.consumer_health_check_interval`.
+
+    Send-only apps:
+        See `GCPPubSubTransportConfig.send_only`: this app's own topic, subscription,
+        and pull consumer are only ever created when it isn't send-only, since a
+        send-only app never receives.
     """
 
     def __init__(
@@ -167,6 +179,7 @@ class GCPPubSubTransport(BaseTransport):
         self._logger = logger or NullLogger()
 
         self._project_id = config.project_id
+        self._send_only = config.send_only
         self._should_declare_topics = config.should_declare_topics
         self._should_declare_subscriptions = config.should_declare_subscriptions
         self._direct_topic_prefix = config.direct_topic_prefix
@@ -184,7 +197,7 @@ class GCPPubSubTransport(BaseTransport):
                 self._check_consumers_health,
                 config.consumer_health_check_interval,
             )
-            if config.consumer_health_check_interval is not None
+            if config.consumer_health_check_interval is not None and not self._send_only
             else None
         )
 
@@ -215,8 +228,10 @@ class GCPPubSubTransport(BaseTransport):
         if state is None:
             return
 
-        for consumer in (state.own_consumer, *state.topic_consumers.values()):
-            await self._stop_consumer(consumer)
+        all_consumers = (state.own_consumer, *state.topic_consumers.values())
+        for consumer in all_consumers:
+            if consumer is not None:
+                await self._stop_consumer(consumer)
 
         # Every consumer is stopped, so nothing can hand off a new message anymore;
         # shut the portal down before draining so no in-flight callback is racing
@@ -373,11 +388,13 @@ class GCPPubSubTransport(BaseTransport):
                 receive_stream: MemoryObjectReceiveStream[Message]
                 send_stream, receive_stream = anyio.create_memory_object_stream(max_buffer_size=math.inf)
 
-                own_topic_path = await self._ensure_topic(publisher, self._direct_topic_id(self.address))
-                own_subscription_path = await self._ensure_subscription(subscriber, self.address, own_topic_path)
+                own_consumer: _Consumer | None = None
+                if not self._send_only:
+                    own_topic_path = await self._ensure_topic(publisher, self._direct_topic_id(self.address))
+                    own_subscription_path = await self._ensure_subscription(subscriber, self.address, own_topic_path)
 
-                own_future = self._start_streaming_pull(subscriber, own_subscription_path, portal, send_stream)
-                own_consumer = _Consumer(subscription_path=own_subscription_path, future=own_future)
+                    own_future = self._start_streaming_pull(subscriber, own_subscription_path, portal, send_stream)
+                    own_consumer = _Consumer(subscription_path=own_subscription_path, future=own_future)
             except BaseException:
                 # A partial start must not leak the clients. `portal.__aexit__` closes
                 # over the cancel scope `portal.__aenter__` opened above, outside any
@@ -471,7 +488,7 @@ class GCPPubSubTransport(BaseTransport):
         if state is None:
             return
         async with self._topic_consumer_lock:
-            if state.own_consumer.future.done():
+            if state.own_consumer is not None and state.own_consumer.future.done():
                 self._logger.warning("gcp_pubsub.consumer.reinitializing", address=self.address)
                 state.own_consumer = self._restart_consumer(state, state.own_consumer)
             for topic, consumer in list(state.topic_consumers.items()):

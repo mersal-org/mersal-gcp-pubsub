@@ -55,6 +55,7 @@ class GCPPubSubPlugin(Plugin):
             transport_config = GCPPubSubTransportConfig(
                 project_id=self._config.project_id,
                 input_queue_name=self._config.input_queue_name,
+                send_only=configurator.send_only,
                 should_declare_topics=self._config.should_declare_topics,
                 should_declare_subscriptions=self._config.should_declare_subscriptions,
                 direct_topic_prefix=self._config.direct_topic_prefix,
