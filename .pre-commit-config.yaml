@@ -23,12 +23,10 @@ repos:
         args: ["--fix", "--config", "pyproject.toml"]
       - id: ruff-format
         args: ["--config", "pyproject.toml"]
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.3
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.49.0
     hooks:
-      - id: codespell
-        additional_dependencies:
-          - tomli
+      - id: typos
   - repo: https://github.com/python-formate/flake8-dunder-all
     rev: v0.6.0
     hooks:
@@ -39,3 +37,23 @@ repos:
     rev: "v1.0.2"
     hooks:
       - id: sphinx-lint
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty
+        entry: mise run type-check:ty
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: mypy
+        name: mypy
+        entry: mise run type-check:mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: pyright
+        name: basedpyright
+        entry: mise run type-check:pyright
+        language: system
+        types: [python]
+        pass_filenames: false

@@ -528,7 +528,7 @@ class GCPPubSubTransport(BaseTransport):
         return await self._ensure_topic(state.publisher, topic_id)
 
     async def _publish(self, state: _StartedState, topic_path: str, transport_message: TransportMessage) -> None:
-        attributes = {key: str(value) for key, value in transport_message.headers.items()}
+        attributes = dict(transport_message.headers)
         colliding_keys = _RESERVED_PUBLISH_ATTRIBUTE_KEYS.intersection(attributes)
         if colliding_keys:
             raise ValueError(
