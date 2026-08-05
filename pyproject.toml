@@ -78,7 +78,7 @@ log_cli = true
 
 [tool.ruff]
 include = [
-  "mersal_gcp_pubsub/**/*.{py,pyi}",
+  "src/mersal_gcp_pubsub/**/*.{py,pyi}",
   "tests/**/*.{py,pyi}",
   "docs/examples/**/*.{py,pyi}",
   "pyproject.toml"
@@ -87,7 +87,7 @@ target-version = "py311"
 line-length = 120
 
 src = [
-  "mersal_gcp_pubsub",
+  "src",
 ]
 
 [tool.ruff.format]
@@ -129,7 +129,7 @@ fallback-version = "0.0.0"
 local_scheme = "no-local-version"
 
 [tool.hatch.build.targets.wheel]
-packages = ["mersal_gcp_pubsub"]
+packages = ["src/mersal_gcp_pubsub"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -167,7 +167,7 @@ ignore_missing_imports = true
 typeCheckingMode = "standard"
 pythonVersion = "3.11"
 include = [
-  "mersal_gcp_pubsub",
+  "src/mersal_gcp_pubsub",
   "tests",
 ]
 
@@ -176,5 +176,5 @@ python-version = "3.11"
 
 [tool.ty.src]
 include = [
-  "mersal_gcp_pubsub",
+  "src/mersal_gcp_pubsub",
 ]
