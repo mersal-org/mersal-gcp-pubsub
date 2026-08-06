@@ -8,9 +8,9 @@ import anyio
 import pytest
 
 from mersal.activation import BuiltinHandlerActivator
-from mersal.app import Mersal
-from mersal_gcp_pubsub.plugin import GCPPubSubPluginConfig
-from mersal_testing.testing_utils import is_docker_available
+from mersal.core.app import Mersal
+from mersal.gcp_pubsub.plugin import GCPPubSubPluginConfig
+from mersal.testing.core.testing_utils import is_docker_available
 
 __all__ = ("TestGCPPubSubPlugin",)
 

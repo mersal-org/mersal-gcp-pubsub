@@ -17,18 +17,18 @@ from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1 import PublisherClient
 from google.pubsub_v1.services.publisher.transports import PublisherGrpcTransport
 
-from mersal.logging import NullLogger
-from mersal.subscription import SubscriptionStorage
-from mersal.transport import Transport
-from mersal.utils.sync import AsyncCallable
-from mersal_gcp_pubsub.subscription_storage import (
+from mersal.gcp_pubsub.subscription_storage import (
     GCPPubSubSubscriptionStorage,
     GCPPubSubSubscriptionStorageConfig,
 )
-from mersal_gcp_pubsub.transport import GCPPubSubTransport, GCPPubSubTransportConfig
-from mersal_testing._internal.conftest import *
-from mersal_testing.subscription.basic_subscription_storage_tests import SubscriptionStorageMaker
-from mersal_testing.transport.basic_transport_tests import TransportMaker
+from mersal.gcp_pubsub.transport import GCPPubSubTransport, GCPPubSubTransportConfig
+from mersal.logging import NullLogger
+from mersal.subscription import SubscriptionStorage
+from mersal.testing.core._internal.conftest import *
+from mersal.testing.core.subscription.basic_subscription_storage_tests import SubscriptionStorageMaker
+from mersal.testing.core.transport.basic_transport_tests import TransportMaker
+from mersal.transport import Transport
+from mersal.utils.sync import AsyncCallable
 
 __all__ = (
     "DockerServiceRegistry",

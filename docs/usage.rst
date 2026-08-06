@@ -30,12 +30,12 @@ client library picks it up automatically, no extra configuration needed.
 Configuring the transport & pub/sub
 -------------------------------------
 
-Use the plugin :py:class:`~mersal_gcp_pubsub.plugin.GCPPubSubPlugin`, to configure both the transport and pub/sub:
+Use the plugin :py:class:`~mersal.gcp_pubsub.plugin.GCPPubSubPlugin`, to configure both the transport and pub/sub:
 
 .. code-block:: python
 
-    from mersal.app import Mersal
-    from mersal_gcp_pubsub.plugin import GCPPubSubPluginConfig
+    from mersal.core.app import Mersal
+    from mersal.gcp_pubsub.plugin import GCPPubSubPluginConfig
 
     gcp_pubsub_plugin_config = GCPPubSubPluginConfig(
         project_id="my-gcp-project",
@@ -86,15 +86,15 @@ Key ``GCPPubSubPluginConfig`` fields:
 ``direct_topic_prefix`` / ``event_topic_prefix`` (default ``"mersal-direct-"`` / ``"mersal-topic-"``)
     Prefixes used to derive GCP topic ids from Mersal addresses/topics - see
     :doc:`implementation_details` for why these exist. If you're also using
-    :py:class:`~mersal_gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage`
+    :py:class:`~mersal.gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage`
     directly (rather than through this plugin), its ``event_topic_prefix`` must match
     this one.
 
 If for any reason you don't want to use the plugin, the transport can be configured
 separately by providing an instance of
-:py:class:`~mersal_gcp_pubsub.transport.GCPPubSubTransport` to the ``transport``
+:py:class:`~mersal.gcp_pubsub.transport.GCPPubSubTransport` to the ``transport``
 argument in the Mersal app constructor. Similarly, an instance of
-:py:class:`~mersal_gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage` can be
+:py:class:`~mersal.gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage` can be
 given to the ``subscription_config`` argument - in which case, remember to pass it this
 app's own transport (see the class docstring for why).
 

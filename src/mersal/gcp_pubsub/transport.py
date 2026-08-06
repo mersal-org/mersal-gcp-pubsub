@@ -56,7 +56,7 @@ class GCPPubSubTransportConfig:
     """Prefix used to derive the GCP topic id backing a pub/sub topic.
 
     Must match the `event_topic_prefix` of any
-    `mersal_gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage` sharing this
+    `mersal.gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage` sharing this
     project - subscribing and publishing only agree on where events land if both sides
     derive the same topic id from a given Mersal topic name.
     """
@@ -138,7 +138,7 @@ class GCPPubSubTransport(BaseTransport):
         backed by a single dedicated subscription (named after its address) bound to
         its own direct topic. Pub/sub fan-out is native: every subscriber gets its own
         subscription on the *same* event topic (see
-        `mersal_gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage`), so
+        `mersal.gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage`), so
         publishing once reaches everyone subscribed.
 
     Push-pull bridge:
@@ -508,7 +508,7 @@ class GCPPubSubTransport(BaseTransport):
         A plain address (e.g. ``"billing"``) is a point-to-point destination, published
         to that app's own direct topic. An address of the form ``"topic@marker"`` - as
         produced by
-        `mersal_gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage.get_subscriber_addresses`
+        `mersal.gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage.get_subscriber_addresses`
         for pub/sub - is published to the shared event topic for ``topic``; the marker
         itself is only ever `event_topic_prefix` and isn't otherwise inspected.
 

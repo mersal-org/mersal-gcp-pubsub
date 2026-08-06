@@ -1,7 +1,7 @@
 Welcome to Mersal GCP Pub/Sub's documentation!
 ================================================
 
-**mersal_gcp_pubsub** is the Google Cloud Pub/Sub implementation for Mersal. It allows using GCP Pub/Sub as a transport that also supports Mersal pub/sub.
+**mersal.gcp_pubsub** is the Google Cloud Pub/Sub implementation for Mersal. It allows using GCP Pub/Sub as a transport that also supports Mersal pub/sub.
 
 
 Quickstart
@@ -13,8 +13,8 @@ Quickstart
 
 .. code-block:: python
 
-    from mersal.app import Mersal
-    from mersal_gcp_pubsub.plugin import GCPPubSubPluginConfig
+    from mersal.core.app import Mersal
+    from mersal.gcp_pubsub.plugin import GCPPubSubPluginConfig
 
     gcp_pubsub_plugin_config = GCPPubSubPluginConfig(
         project_id="my-gcp-project",

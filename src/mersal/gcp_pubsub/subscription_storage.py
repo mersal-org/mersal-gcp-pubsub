@@ -13,7 +13,7 @@ from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
 from mersal.subscription import SubscriptionStorage
 
 if TYPE_CHECKING:
-    from mersal_gcp_pubsub.transport import GCPPubSubTransport
+    from mersal.gcp_pubsub.transport import GCPPubSubTransport
 
 __all__ = (
     "GCPPubSubSubscriptionStorage",

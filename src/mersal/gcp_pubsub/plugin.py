@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from mersal.gcp_pubsub.subscription_storage import (
+    GCPPubSubSubscriptionStorage,
+    GCPPubSubSubscriptionStorageConfig,
+)
+from mersal.gcp_pubsub.transport import GCPPubSubTransport, GCPPubSubTransportConfig
 from mersal.lifespan.lifespan_hooks_registration_plugin import LifespanHooksRegistrationPluginConfig
 from mersal.logging import Logger
 from mersal.plugins import Plugin
@@ -10,11 +15,6 @@ from mersal.subscription import SubscriptionStorage
 from mersal.threading import AnyIOPeriodicTaskFactory
 from mersal.transport.transport import Transport
 from mersal.utils.sync import AsyncCallable
-from mersal_gcp_pubsub.subscription_storage import (
-    GCPPubSubSubscriptionStorage,
-    GCPPubSubSubscriptionStorageConfig,
-)
-from mersal_gcp_pubsub.transport import GCPPubSubTransport, GCPPubSubTransportConfig
 
 if TYPE_CHECKING:
     from mersal.configuration import StandardConfigurator

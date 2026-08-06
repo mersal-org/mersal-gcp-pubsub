@@ -6,19 +6,19 @@ import pytest
 from google.api_core.exceptions import NotFound
 from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
 
-from mersal.transport import DefaultTransactionContext
-from mersal_gcp_pubsub.subscription_storage import (
+from mersal.gcp_pubsub.subscription_storage import (
     GCPPubSubSubscriptionStorage,
     GCPPubSubSubscriptionStorageConfig,
 )
-from mersal_gcp_pubsub.transport import GCPPubSubTransport
-from mersal_testing.subscription.basic_subscription_storage_tests import (
+from mersal.gcp_pubsub.transport import GCPPubSubTransport
+from mersal.testing.core.subscription.basic_subscription_storage_tests import (
     BasicSubscriptionStorageTest,
     SubscriptionStorageMaker,
 )
-from mersal_testing.test_doubles import TransportMessageBuilder
-from mersal_testing.testing_utils import is_docker_available
-from mersal_testing.transport.basic_transport_tests import TransportMaker
+from mersal.testing.core.test_doubles import TransportMessageBuilder
+from mersal.testing.core.testing_utils import is_docker_available
+from mersal.testing.core.transport.basic_transport_tests import TransportMaker
+from mersal.transport import DefaultTransactionContext
 
 __all__ = ("TestGCPPubSubSubscriptionStorage",)
 

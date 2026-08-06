@@ -5,13 +5,13 @@ import anyio
 import pytest
 from google.api_core.exceptions import NotFound
 
+from mersal.gcp_pubsub.transport import GCPPubSubTransport, GCPPubSubTransportConfig
 from mersal.logging import NullLogger
+from mersal.testing.core.test_doubles import TransportMessageBuilder
+from mersal.testing.core.testing_utils import is_docker_available
+from mersal.testing.core.transport.basic_transport_tests import BasicTransportTest, TransportMaker
 from mersal.transport import DefaultTransactionContext
 from mersal.types.callable_types import AsyncAnyCallable
-from mersal_gcp_pubsub.transport import GCPPubSubTransport, GCPPubSubTransportConfig
-from mersal_testing.test_doubles import TransportMessageBuilder
-from mersal_testing.testing_utils import is_docker_available
-from mersal_testing.transport.basic_transport_tests import BasicTransportTest, TransportMaker
 
 __all__ = (
     "TestGCPPubSubTransport",
@@ -49,7 +49,7 @@ class TestGCPPubSubTransport:
 
 
 class TestGCPPubSubTransportContract(BasicTransportTest):
-    """Runs mersal_testing's generic transport contract against `GCPPubSubTransport`."""
+    """Runs mersal.testing.core's generic transport contract against `GCPPubSubTransport`."""
 
     @pytest.fixture
     def transport_maker(self, gcp_pubsub_transport_maker: TransportMaker) -> TransportMaker:

@@ -6,7 +6,7 @@ Client library
 
 `google-cloud-pubsub <https://cloud.google.com/python/docs/reference/pubsub/latest>`_
 is used as the GCP Pub/Sub client library. Unlike ``aio-pika`` (used by
-``mersal_rabbitmq``), it isn't asyncio-native - it's a thread/callback-based client
+``mersal.rabbitmq``), it isn't asyncio-native - it's a thread/callback-based client
 built on gRPC - so every blocking call is bridged onto a worker thread via
 ``anyio.to_thread.run_sync``.
 
@@ -24,7 +24,7 @@ shared exchanges, every Mersal address becomes its own topic:
 - A pub/sub topic name (e.g. ``"order.created"``) becomes topic
   ``f"{event_topic_prefix}order.created"``. Every subscriber gets its own subscription
   on that *same* topic (see
-  :py:class:`~mersal_gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage`), so
+  :py:class:`~mersal.gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage`), so
   publishing once still reaches everyone subscribed - broker-native fan-out, just
   modeled as N subscriptions on one topic rather than N bindings on one exchange.
 
@@ -44,9 +44,9 @@ Mersal integration
 The library provides an implementation for Mersal's two main protocols:
 
 - :py:class:`mersal.transport.Transport`, via
-  :py:class:`~mersal_gcp_pubsub.transport.GCPPubSubTransport`
+  :py:class:`~mersal.gcp_pubsub.transport.GCPPubSubTransport`
 - :py:class:`mersal.subscription.SubscriptionStorage`, via
-  :py:class:`~mersal_gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage`
+  :py:class:`~mersal.gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage`
 
 Push-Pull bridge
 -------------------
@@ -84,13 +84,13 @@ bound to exactly one topic, so subscribing this app to a new topic genuinely mea
 creating a new ``Subscription`` resource *and* starting a new pull consumer for it.
 
 This is why
-:py:class:`~mersal_gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage` needs
+:py:class:`~mersal.gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage` needs
 a reference to the subscribing app's own
-:py:class:`~mersal_gcp_pubsub.transport.GCPPubSubTransport`: when that transport's own
+:py:class:`~mersal.gcp_pubsub.transport.GCPPubSubTransport`: when that transport's own
 address registers or unregisters itself, the storage starts or stops the matching live
 pull consumer via
-:py:meth:`~mersal_gcp_pubsub.transport.GCPPubSubTransport.start_consuming_topic` /
-:py:meth:`~mersal_gcp_pubsub.transport.GCPPubSubTransport.stop_consuming_topic`, feeding
+:py:meth:`~mersal.gcp_pubsub.transport.GCPPubSubTransport.start_consuming_topic` /
+:py:meth:`~mersal.gcp_pubsub.transport.GCPPubSubTransport.stop_consuming_topic`, feeding
 newly-arriving messages into the same shared stream as everything else.
 
 Unlike an AMQP unbind, unregistering a subscriber **deletes** its underlying GCP
@@ -138,4 +138,4 @@ Missing features
 1. Push delivery (an HTTP endpoint Pub/Sub calls, rather than this app pulling) - see
    :doc:`usage`.
 2. Message ordering keys and exactly-once delivery.
-3. Message expiry and deferred messages, same as ``mersal_rabbitmq``.
+3. Message expiry and deferred messages, same as ``mersal.rabbitmq``.
