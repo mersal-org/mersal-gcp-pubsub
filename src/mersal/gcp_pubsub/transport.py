@@ -7,6 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 import anyio
+import anyio.lowlevel
 from anyio.from_thread import BlockingPortal
 from anyio.to_thread import run_sync
 from google.api_core.exceptions import AlreadyExists
@@ -92,6 +93,15 @@ class GCPPubSubTransportConfig:
     retried internally by the client library) and restart it if so.
 
     Set to `None` to disable it entirely.
+    """
+    receive_timeout: float = 5.0
+    """Maximum seconds `receive` waits for a message before returning `None`.
+
+    `Transport.receive` must return within a bounded time rather than blocking
+    forever, so the worker's heartbeat keeps advancing while idle - an
+    unbounded wait here would make a merely-idle transport indistinguishable
+    from a wedged one to the liveness watcher. Idle backoff between calls is
+    the worker's job, not this transport's.
     """
 
 
@@ -185,6 +195,7 @@ class GCPPubSubTransport(BaseTransport):
         self._direct_topic_prefix = config.direct_topic_prefix
         self._event_topic_prefix = config.event_topic_prefix
         self._ack_deadline_seconds = config.ack_deadline_seconds
+        self._receive_timeout = config.receive_timeout
         self._flow_control = FlowControl(
             max_messages=config.max_outstanding_messages,
             max_lease_duration=config.max_lease_duration_seconds,
@@ -296,14 +307,37 @@ class GCPPubSubTransport(BaseTransport):
                 _ = task_group.start_soon(_send, message)
 
     async def receive(self, transaction_context: TransactionContext) -> TransportMessage | None:
-        """Wait for the next message; blocks until one arrives.
+        """Return the next message, or `None` after `receive_timeout` seconds without one.
 
-        There is deliberately no built-in timeout: the worker stops a blocked receive
-        by cancelling it, and any caller needing a deadline can impose one externally
-        (e.g. `anyio.move_on_after`) - the wait is cancellation-safe.
+        The bounded wait is purely local - the streaming pull consumers keep running
+        regardless, so timing out touches neither the broker nor any consumer, and a
+        message arriving just after the deadline is simply picked up by the next call.
+
+        Unlike the RabbitMQ transport, a `None` never means "consumer died" here:
+        several independent consumers feed the one stream and their health is the
+        periodic health check's business (see `_check_consumers_health`), so `receive`
+        has no self-heal path for a timeout to be disentangled from.
         """
         state = await self._ensure_started()
-        message = await state.receive_stream.receive()
+
+        message: Message | None = None
+        try:
+            # Checkpoint first so a busy stretch of buffered messages still yields to
+            # the event loop once per call, like a plain `receive()` would - and so a
+            # pending cancellation lands before a message is popped, not after.
+            await anyio.lowlevel.checkpoint()
+            message = state.receive_stream.receive_nowait()
+        except anyio.WouldBlock:
+            # Nothing buffered: wait, but only for so long. The timeout machinery is
+            # confined to this idle path on purpose - a stream that's being drained
+            # never pays for it, and cancellation can only ever race a delivery here.
+            with anyio.move_on_after(self._receive_timeout):
+                message = await state.receive_stream.receive()
+
+        if message is None:
+            # Idle timeout: bounded receive lets the worker's liveness heartbeat
+            # advance; the worker owns any backoff before calling again.
+            return None
 
         # `ack()`/`nack()` are non-blocking - they just enqueue onto the streaming
         # pull manager's own dispatcher thread - so unlike `_publish`, there's no

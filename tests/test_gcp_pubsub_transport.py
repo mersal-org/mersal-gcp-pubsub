@@ -67,9 +67,11 @@ class TestGCPPubSubTransportSpecificBehaviour:
     def transport_maker(self, gcp_pubsub_transport_maker: TransportMaker) -> TransportMaker:
         return gcp_pubsub_transport_maker
 
-    #: `receive()` has no built-in timeout - it blocks until a message arrives - so
-    #: every receive expecting a message runs under this external deadline, turning a
-    #: delivery regression into a fast `TimeoutError` instead of a hung test.
+    #: `receive()` bounds its own wait (`GCPPubSubTransportConfig.receive_timeout`,
+    #: default 5s) by returning `None`, but every receive expecting a message still
+    #: runs under this external deadline as a backstop: a regression that makes
+    #: `receive` block forever again fails fast as `TimeoutError` instead of hanging
+    #: the test.
     receive_deadline: float = 5.0
 
     async def assert_with_context(
@@ -218,6 +220,43 @@ class TestGCPPubSubTransportSpecificBehaviour:
 
         async def _send(context: DefaultTransactionContext) -> None:
             await sender.send("healer", message, context)
+
+        await self.assert_with_context(_send)
+
+        async def _receive(context: DefaultTransactionContext) -> None:
+            with anyio.fail_after(self.receive_deadline):
+                received = await receiver.receive(context)
+            assert received is not None
+            assert str(received.headers.message_id) == str(message.headers.message_id)
+
+        await self.assert_with_context(_receive)
+
+    async def test_receive_returns_none_on_idle_timeout(self, transport_maker: TransportMaker) -> None:
+        """`receive()` on an *empty* queue returns `None` by itself once
+        `receive_timeout` elapses - the bounded wait that keeps the worker's liveness
+        heartbeat advancing - and a timed-out receive leaves the transport fully
+        functional for the next delivery.
+        """
+        idle_timeout = 0.2
+        receiver = cast(
+            "GCPPubSubTransport", transport_maker(input_queue_address="idler", receive_timeout=idle_timeout)
+        )
+        await receiver()
+
+        async def _idle_receive(context: DefaultTransactionContext) -> None:
+            started_at = anyio.current_time()
+            with anyio.fail_after(self.receive_deadline):
+                assert await receiver.receive(context) is None
+            # It waited the configured time rather than returning `None` eagerly -
+            # an immediate `None` would have the worker spinning hot on an idle queue.
+            assert anyio.current_time() - started_at >= idle_timeout
+
+        await self.assert_with_context(_idle_receive)
+
+        message = TransportMessageBuilder.build()
+
+        async def _send(context: DefaultTransactionContext) -> None:
+            await receiver.send("idler", message, context)
 
         await self.assert_with_context(_send)
 
