@@ -2,6 +2,7 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
+from datetime import timedelta
 from typing import Any
 
 import anyio
@@ -10,7 +11,9 @@ import pytest
 from mersal.activation import BuiltinHandlerActivator
 from mersal.core.app import Mersal
 from mersal.gcp_pubsub.plugin import GCPPubSubPluginConfig
+from mersal.persistence.in_memory import InMemoryTimeoutManager
 from mersal.testing.core.testing_utils import is_docker_available
+from mersal.timeouts import TimeoutsConfig
 
 __all__ = ("TestGCPPubSubPlugin",)
 
@@ -55,7 +58,7 @@ class TestGCPPubSubPlugin:
     """
 
     def _make_app(
-        self, project_id: str, event_topic_prefix: str, queue_name: str
+        self, project_id: str, event_topic_prefix: str, queue_name: str, **app_kwargs: Any
     ) -> tuple[Mersal, list[Greeting], anyio.Event]:
         received: list[Greeting] = []
         done = anyio.Event()
@@ -83,6 +86,7 @@ class TestGCPPubSubPlugin:
             activator,
             plugins=[plugin_config.plugin()],
             serializer=_JsonSerializer(types={Greeting}),
+            **app_kwargs,
         )
         return app, received, done
 
@@ -102,6 +106,38 @@ class TestGCPPubSubPlugin:
                 await done.wait()
 
             assert received == [Greeting(text="hello")]
+        finally:
+            await app.stop()
+
+    async def test_defer_local_is_delivered_through_the_timeout_manager(
+        self,
+        project_id: str,
+        event_topic_prefix: str,
+    ) -> None:
+        """Pub/Sub can't delay delivery itself, so deferring goes through a timeout
+        manager: the message is sent to this app's own address, stored until due, and
+        then sent to its recipient."""
+        queue_name = f"plugin-test-{uuid.uuid4()}"
+        timeout_manager = InMemoryTimeoutManager()
+        app, received, done = self._make_app(
+            project_id,
+            event_topic_prefix,
+            queue_name,
+            timeouts=TimeoutsConfig(storage=timeout_manager, poll_interval=0.1),
+        )
+
+        try:
+            await app.start()
+            await app.defer_local(timedelta(seconds=1), Greeting(text="later"))
+
+            with anyio.fail_after(5.0):
+                while not len(timeout_manager):
+                    await anyio.sleep(0.05)
+            assert not done.is_set()
+            with anyio.fail_after(10.0):
+                await done.wait()
+
+            assert received == [Greeting(text="later")]
         finally:
             await app.stop()
 

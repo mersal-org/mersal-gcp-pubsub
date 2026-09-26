@@ -104,3 +104,25 @@ Push delivery
 GCP Pub/Sub also supports push delivery (Pub/Sub calling an HTTP endpoint you host,
 rather than your app pulling). This library currently only implements pull delivery;
 push support is planned as a future addition.
+
+Deferred messages
+------------------
+
+Pub/Sub has no per-message scheduled delivery (a subscription's retry policy only
+delays *redelivery*, by at most 600 seconds), so this transport can't defer messages
+natively. Deferring (``app.defer`` / ``app.defer_local``) works through a timeout
+manager instead - see :py:class:`~mersal.timeouts.TimeoutsConfig`:
+
+.. code-block:: python
+
+    from mersal.persistence.in_memory import InMemoryTimeoutManager
+    from mersal.timeouts import TimeoutsConfig
+
+    app = Mersal(
+        "my-app",
+        activator,
+        plugins=[plugin_config.plugin()],
+        timeouts=TimeoutsConfig(storage=InMemoryTimeoutManager()),
+    )
+
+Without one, deferring raises :py:class:`~mersal.exceptions.DeferralNotSupportedError`.

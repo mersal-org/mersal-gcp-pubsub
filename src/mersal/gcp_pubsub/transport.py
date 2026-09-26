@@ -176,6 +176,13 @@ class GCPPubSubTransport(BaseTransport):
         See `GCPPubSubTransportConfig.send_only`: this app's own topic, subscription,
         and pull consumer are only ever created when it isn't send-only, since a
         send-only app never receives.
+
+    Deferral:
+        Not native (`supports_deferral` is `False`): Pub/Sub has no per-message
+        scheduled delivery - a subscription's retry policy/ack deadline only delays
+        *redelivery*, capped at 600 seconds. Deferring goes through a timeout manager
+        instead (see `mersal.timeouts.TimeoutsConfig`); without one, `Mersal.defer`
+        raises.
     """
 
     def __init__(
@@ -225,6 +232,10 @@ class GCPPubSubTransport(BaseTransport):
 
     async def __call__(self) -> None:
         await self._ensure_started()
+
+    @property
+    def supports_deferral(self) -> bool:
+        return False
 
     async def close(self) -> None:
         """Gracefully tear down every live consumer and the underlying clients.
