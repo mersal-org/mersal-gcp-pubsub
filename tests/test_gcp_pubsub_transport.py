@@ -195,6 +195,34 @@ class TestGCPPubSubTransportSpecificBehaviour:
 
         await self.assert_with_context(_publish)
 
+    async def test_concurrent_first_publishes_to_a_topic_create_it_once(self, transport_maker: TransportMaker) -> None:
+        """`create_topic` is an admin RPC (rate-limited, and every `AlreadyExists` is an
+        ERROR in Cloud Audit Logs), so concurrent publishes to a topic this transport
+        hasn't ensured yet must share a single call rather than each issuing one.
+        """
+        transport = cast("GCPPubSubTransport", transport_maker(input_queue_address="ensure-topic-once"))
+        state = await transport._ensure_started()
+
+        create_topic_calls = 0
+        create_topic = state.publisher.create_topic
+
+        def counting_create_topic(*args, **kwargs):  # type: ignore[no-untyped-def]
+            nonlocal create_topic_calls
+            create_topic_calls += 1
+            return create_topic(*args, **kwargs)
+
+        state.publisher.create_topic = counting_create_topic  # type: ignore[method-assign]
+        topic_id = transport._event_topic_id(f"concurrent.topic.{uuid.uuid4()}")
+
+        async with anyio.create_task_group() as tg:
+            for _ in range(10):
+                tg.start_soon(transport._ensure_topic, state.publisher, topic_id)
+
+        assert create_topic_calls == 1
+
+        await transport._ensure_topic(state.publisher, topic_id)
+        assert create_topic_calls == 1
+
     async def test_receive_self_heals_after_consumer_dies(self, transport_maker: TransportMaker) -> None:
         """If the underlying pull consumer dies (e.g. its stream was cancelled), the
         periodic health check transparently reinitializes it rather than leaving the

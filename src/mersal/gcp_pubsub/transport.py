@@ -229,6 +229,10 @@ class GCPPubSubTransport(BaseTransport):
         `create_topic` admin RPC (expecting `AlreadyExists`) once per topic for this
         transport's lifetime rather than on every publish.
         """
+        self._ensure_topic_locks: dict[str, anyio.Lock] = {}
+        """One lock per topic id, so concurrent first publishes to the same topic share
+        a single `create_topic` call instead of each issuing their own.
+        """
 
     async def __call__(self) -> None:
         await self._ensure_started()
@@ -473,10 +477,16 @@ class GCPPubSubTransport(BaseTransport):
         topic_path: str = publisher.topic_path(self._project_id, topic_id)
         if topic_id in self._ensured_topic_ids:
             return topic_path
-        if self._should_declare_topics:
-            with suppress(AlreadyExists):
-                await run_sync(partial(publisher.create_topic, name=topic_path))
-        self._ensured_topic_ids.add(topic_id)
+        lock = self._ensure_topic_locks.setdefault(topic_id, anyio.Lock())
+        async with lock:
+            # Whoever held the lock before us may have just ensured it.
+            if topic_id in self._ensured_topic_ids:
+                return topic_path
+            if self._should_declare_topics:
+                with suppress(AlreadyExists):
+                    await run_sync(partial(publisher.create_topic, name=topic_path))
+            self._ensured_topic_ids.add(topic_id)
+        self._ensure_topic_locks.pop(topic_id, None)
         return topic_path
 
     async def _ensure_subscription(self, subscriber: SubscriberClient, subscription_id: str, topic_path: str) -> str:
