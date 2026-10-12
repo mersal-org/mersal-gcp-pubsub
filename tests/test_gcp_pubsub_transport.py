@@ -184,7 +184,8 @@ class TestGCPPubSubTransportSpecificBehaviour:
     ) -> None:
         """Unlike a point-to-point send to a destination nobody provisioned, publishing
         an event nobody has subscribed to yet is normal, not an error - `send` ensures
-        the event topic exists on the fly (see `_resolve_publish_topic_path`).
+        the event topic is created on the fly once the publish finds it missing (see
+        `_publish`).
         """
         publisher = transport_maker(input_queue_address="fanout-publisher-lonely")
         message = TransportMessageBuilder.build()
@@ -195,33 +196,101 @@ class TestGCPPubSubTransportSpecificBehaviour:
 
         await self.assert_with_context(_publish)
 
-    async def test_concurrent_first_publishes_to_a_topic_create_it_once(self, transport_maker: TransportMaker) -> None:
-        """`create_topic` is an admin RPC (rate-limited, and every `AlreadyExists` is an
-        ERROR in Cloud Audit Logs), so concurrent publishes to a topic this transport
-        hasn't ensured yet must share a single call rather than each issuing one.
-        """
-        transport = cast("GCPPubSubTransport", transport_maker(input_queue_address="ensure-topic-once"))
-        state = await transport._ensure_started()
-
-        create_topic_calls = 0
+    def _count_create_topic_calls(self, transport: GCPPubSubTransport) -> list[str]:
+        """Wrap the started transport's `create_topic` so tests can see every admin
+        RPC it issues; returns the (live) list of topic names it was called with."""
+        state = transport._state
+        assert state is not None
+        calls: list[str] = []
         create_topic = state.publisher.create_topic
 
         def counting_create_topic(*args, **kwargs):  # type: ignore[no-untyped-def]
-            nonlocal create_topic_calls
-            create_topic_calls += 1
+            calls.append(cast(str, kwargs.get("name", args[0] if args else None)))
             return create_topic(*args, **kwargs)
 
         state.publisher.create_topic = counting_create_topic  # type: ignore[method-assign]
-        topic_id = transport._event_topic_id(f"concurrent.topic.{uuid.uuid4()}")
+        return calls
 
-        async with anyio.create_task_group() as tg:
+    async def test_publish_to_existing_topic_issues_no_create_topic(
+        self, transport_maker: TransportMaker, event_topic_prefix: str
+    ) -> None:
+        """The common path - publishing to a topic that already exists, e.g. because a
+        subscriber created it on startup - is a single publish with no admin RPC, even
+        for a transport that has never published to that topic before.
+        """
+        creator = cast("GCPPubSubTransport", transport_maker(input_queue_address="topic-creator"))
+        publisher = cast("GCPPubSubTransport", transport_maker(input_queue_address="fresh-publisher"))
+        topic = f"already.exists.{uuid.uuid4()}"
+        creator_state = await creator._ensure_started()
+        await creator._ensure_topic(creator_state.publisher, creator._event_topic_id(topic))
+
+        await publisher._ensure_started()
+        create_topic_calls = self._count_create_topic_calls(publisher)
+
+        async def _publish(context: DefaultTransactionContext) -> None:
+            await publisher.send(f"{topic}@{event_topic_prefix}", TransportMessageBuilder.build(), context)
+
+        await self.assert_with_context(_publish)
+
+        assert create_topic_calls == []
+
+    async def test_concurrent_publishes_to_a_missing_topic_create_it_once(
+        self, transport_maker: TransportMaker, event_topic_prefix: str
+    ) -> None:
+        """`create_topic` is an admin RPC (rate-limited, and every `AlreadyExists` is an
+        ERROR in Cloud Audit Logs), so concurrent publishes that all find the same topic
+        missing must share a single call rather than each issuing one - and every one
+        of them must still succeed.
+        """
+        transport = cast("GCPPubSubTransport", transport_maker(input_queue_address="create-topic-once"))
+        state = await transport._ensure_started()
+        create_topic_calls = self._count_create_topic_calls(transport)
+        topic = f"concurrent.topic.{uuid.uuid4()}"
+
+        # Outgoing messages are published together, concurrently, when the
+        # transaction context completes (see `send_outgoing_messages`).
+        async def _publish(context: DefaultTransactionContext) -> None:
             for _ in range(10):
-                tg.start_soon(transport._ensure_topic, state.publisher, topic_id)
+                await transport.send(f"{topic}@{event_topic_prefix}", TransportMessageBuilder.build(), context)
 
-        assert create_topic_calls == 1
+        await self.assert_with_context(_publish)
 
-        await transport._ensure_topic(state.publisher, topic_id)
-        assert create_topic_calls == 1
+        assert create_topic_calls == [
+            state.publisher.topic_path(transport._project_id, transport._event_topic_id(topic))
+        ]
+
+    async def test_publish_retries_while_a_newly_created_topic_is_not_visible_yet(
+        self, transport_maker: TransportMaker, event_topic_prefix: str
+    ) -> None:
+        """A topic created on publish may briefly still look missing to the publish
+        path; the republish rides that out instead of failing the send.
+        """
+        transport = cast("GCPPubSubTransport", transport_maker(input_queue_address="propagation-delay"))
+        state = await transport._ensure_started()
+        publish = state.publisher.publish
+        not_found_left = 3  # the initial publish, then two republishes after creation
+
+        class _NotFoundFuture:
+            def result(self, timeout: float | None = None) -> None:
+                raise NotFound("topic not visible yet")
+
+        def flaky_publish(*args, **kwargs):  # type: ignore[no-untyped-def]
+            nonlocal not_found_left
+            if not_found_left > 0:
+                not_found_left -= 1
+                return _NotFoundFuture()
+            return publish(*args, **kwargs)
+
+        state.publisher.publish = flaky_publish  # type: ignore[method-assign]
+
+        async def _publish(context: DefaultTransactionContext) -> None:
+            await transport.send(
+                f"propagating.topic.{uuid.uuid4()}@{event_topic_prefix}", TransportMessageBuilder.build(), context
+            )
+
+        await self.assert_with_context(_publish)
+
+        assert not_found_left == 0
 
     async def test_receive_self_heals_after_consumer_dies(self, transport_maker: TransportMaker) -> None:
         """If the underlying pull consumer dies (e.g. its stream was cancelled), the

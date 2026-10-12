@@ -10,7 +10,7 @@ import anyio
 import anyio.lowlevel
 from anyio.from_thread import BlockingPortal
 from anyio.to_thread import run_sync
-from google.api_core.exceptions import AlreadyExists
+from google.api_core.exceptions import AlreadyExists, NotFound
 from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
 from google.cloud.pubsub_v1.types import FlowControl
 
@@ -36,6 +36,9 @@ __all__ = (
 
 
 _RETRY_DELAYS = [0.5, 2.0]
+
+_TOPIC_PROPAGATION_DELAYS = (0.1, 0.5, 1.0)
+"""Waits between republishes when a topic created on publish isn't visible yet."""
 
 _RESERVED_PUBLISH_ATTRIBUTE_KEYS = frozenset({"ordering_key", "retry", "timeout"})
 
@@ -224,14 +227,11 @@ class GCPPubSubTransport(BaseTransport):
         self._state: _StartedState | None = None
         self._start_lock = anyio.Lock()
         self._topic_consumer_lock = anyio.Lock()
-        self._ensured_topic_ids: set[str] = set()
-        """Topic ids already confirmed to exist, so `_ensure_topic` issues the
-        `create_topic` admin RPC (expecting `AlreadyExists`) once per topic for this
-        transport's lifetime rather than on every publish.
-        """
-        self._ensure_topic_locks: dict[str, anyio.Lock] = {}
-        """One lock per topic id, so concurrent first publishes to the same topic share
-        a single `create_topic` call instead of each issuing their own.
+        self._topic_creations: dict[str, anyio.Event] = {}
+        """In-flight `create_topic` calls, keyed by topic path, so concurrent callers that
+        all find the same topic missing share a single admin RPC instead of each
+        issuing their own. Entries only live while the call is in flight - nothing is
+        cached, since publishing never checks for a topic up front (see `_publish`).
         """
 
     async def __call__(self) -> None:
@@ -314,7 +314,7 @@ class GCPPubSubTransport(BaseTransport):
         state = await self._ensure_started()
 
         async def _send(message: OutgoingMessage) -> None:
-            topic_path = await self._resolve_publish_topic_path(state, message.destination_address)
+            topic_path = self._publish_topic_path(state, message.destination_address)
             await self._retrier.run(partial(self._publish, state, topic_path, message.transport_message))
 
         async with anyio.create_task_group() as task_group:
@@ -474,20 +474,36 @@ class GCPPubSubTransport(BaseTransport):
             return state
 
     async def _ensure_topic(self, publisher: PublisherClient, topic_id: str) -> str:
+        """Create `topic_id` if topology management is on. Used where a topic must
+        exist before anything is published to it - this app's own direct topic at
+        startup, and `create_queue` - not on the publish path, which creates topics
+        only once a publish actually finds one missing (see `_publish`).
+        """
         topic_path: str = publisher.topic_path(self._project_id, topic_id)
-        if topic_id in self._ensured_topic_ids:
-            return topic_path
-        lock = self._ensure_topic_locks.setdefault(topic_id, anyio.Lock())
-        async with lock:
-            # Whoever held the lock before us may have just ensured it.
-            if topic_id in self._ensured_topic_ids:
-                return topic_path
-            if self._should_declare_topics:
-                with suppress(AlreadyExists):
-                    await run_sync(partial(publisher.create_topic, name=topic_path))
-            self._ensured_topic_ids.add(topic_id)
-        self._ensure_topic_locks.pop(topic_id, None)
+        if self._should_declare_topics:
+            await self._create_topic(publisher, topic_path)
         return topic_path
+
+    async def _create_topic(self, publisher: PublisherClient, topic_path: str) -> None:
+        """Issue `create_topic` for `topic_path`, tolerating `AlreadyExists`.
+
+        Concurrent callers for the same topic wait on the first caller's RPC rather
+        than issuing their own: `create_topic` is a rate-limited admin RPC, and every
+        `AlreadyExists` it returns is logged as an ERROR in Cloud Audit Logs.
+        """
+        in_flight = self._topic_creations.get(topic_path)
+        if in_flight is not None:
+            await in_flight.wait()
+            return
+
+        done = anyio.Event()
+        self._topic_creations[topic_path] = done
+        try:
+            with suppress(AlreadyExists):
+                await run_sync(partial(publisher.create_topic, name=topic_path))
+        finally:
+            del self._topic_creations[topic_path]
+            done.set()
 
     async def _ensure_subscription(self, subscriber: SubscriberClient, subscription_id: str, topic_path: str) -> str:
         subscription_path: str = subscriber.subscription_path(self._project_id, subscription_id)
@@ -557,8 +573,8 @@ class GCPPubSubTransport(BaseTransport):
         )
         return _Consumer(subscription_path=consumer.subscription_path, future=future)
 
-    async def _resolve_publish_topic_path(self, state: _StartedState, destination_address: str) -> str:
-        """Resolve which GCP topic a destination address publishes to, ensuring it exists.
+    def _publish_topic_path(self, state: _StartedState, destination_address: str) -> str:
+        """Resolve which GCP topic a destination address publishes to.
 
         A plain address (e.g. ``"billing"``) is a point-to-point destination, published
         to that app's own direct topic. An address of the form ``"topic@marker"`` - as
@@ -566,23 +582,29 @@ class GCPPubSubTransport(BaseTransport):
         `mersal.gcp_pubsub.subscription_storage.GCPPubSubSubscriptionStorage.get_subscriber_addresses`
         for pub/sub - is published to the shared event topic for ``topic``; the marker
         itself is only ever `event_topic_prefix` and isn't otherwise inspected.
-
-        Unlike RabbitMQ's topic exchange - a single resource declared once upfront, so
-        publishing an event nobody has subscribed to yet trivially succeeds - each GCP
-        event topic is its own resource that must exist before anyone can publish to
-        it, and no subscriber may have registered (and thus created it) yet. So a
-        destination topic is ensured here, on every publish, rather than only when a
-        subscriber is registered - subject to `should_declare_topics`, same as any
-        other topic this transport manages.
         """
         if "@" in destination_address:
             topic, _marker = destination_address.rsplit("@", 1)
             topic_id = self._event_topic_id(topic)
         else:
             topic_id = self._direct_topic_id(destination_address)
-        return await self._ensure_topic(state.publisher, topic_id)
+        topic_path: str = state.publisher.topic_path(self._project_id, topic_id)
+        return topic_path
 
     async def _publish(self, state: _StartedState, topic_path: str, transport_message: TransportMessage) -> None:
+        """Publish optimistically, creating the topic only if it turns out to be missing.
+
+        Unlike RabbitMQ's topic exchange - a single resource declared once upfront, so
+        publishing an event nobody has subscribed to yet trivially succeeds - each GCP
+        topic is its own resource that must exist before anyone can publish to it, and
+        no subscriber may have registered (and thus created it) yet. Rather than paying
+        a `create_topic` admin RPC up front for every topic a process publishes to,
+        the publish is simply attempted: topics almost always already exist (every
+        subscriber creates its topic on startup), so the common path is a single
+        publish. Only a `NotFound` triggers creating the topic - subject to
+        `should_declare_topics` - followed by a republish, retried briefly in case
+        the new topic isn't visible to the publish path yet.
+        """
         attributes = dict(transport_message.headers)
         colliding_keys = _RESERVED_PUBLISH_ATTRIBUTE_KEYS.intersection(attributes)
         if colliding_keys:
@@ -591,8 +613,29 @@ class GCPPubSubTransport(BaseTransport):
                 "keyword arguments (ordering_key/retry/timeout) and would be silently "
                 "bound to those instead of becoming message attributes; rename the header(s)."
             )
-        future = state.publisher.publish(topic_path, transport_message.body, **attributes)
-        await run_sync(future.result)
+
+        async def _attempt() -> None:
+            future = state.publisher.publish(topic_path, transport_message.body, **attributes)
+            await run_sync(future.result)
+
+        try:
+            await _attempt()
+            return
+        except NotFound:
+            if not self._should_declare_topics:
+                raise
+
+        self._logger.info("gcp_pubsub.topic.creating_on_publish", topic=topic_path)
+        await self._create_topic(state.publisher, topic_path)
+
+        for delay in (*_TOPIC_PROPAGATION_DELAYS, None):
+            try:
+                await _attempt()
+                return
+            except NotFound:
+                if delay is None:
+                    raise
+                await anyio.sleep(delay)
 
     def _to_transport_message(self, message: Message) -> TransportMessage:
         return TransportMessage(body=message.data, headers=MessageHeaders(dict(message.attributes)))

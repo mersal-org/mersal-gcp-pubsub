@@ -17,14 +17,14 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.10
+    rev: v0.17.0
     hooks:
       - id: ruff
         args: ["--fix", "--config", "pyproject.toml"]
       - id: ruff-format
         args: ["--config", "pyproject.toml"]
   - repo: https://github.com/crate-ci/typos
-    rev: typos-dict-v0.14.2
+    rev: v1.51.1
     hooks:
       - id: typos
   - repo: https://github.com/python-formate/flake8-dunder-all

@@ -30,9 +30,12 @@ shared exchanges, every Mersal address becomes its own topic:
 
 Because each event topic is its own resource - unlike RabbitMQ's topic exchange, a
 single resource declared once upfront - publishing an event nobody has subscribed to
-yet would otherwise fail with ``NotFound``. To avoid that, sending ensures the
-destination topic exists (subject to ``should_declare_topics``) on every publish,
-rather than only when a subscriber first registers.
+yet would otherwise fail with ``NotFound``. Rather than checking up front, sending
+publishes optimistically: topics almost always exist already (every subscriber creates
+its topic on startup), so the common path is a single publish with no admin RPC. Only
+when a publish fails with ``NotFound`` does the transport create the topic (subject to
+``should_declare_topics``; concurrent publishes share one ``create_topic`` call) and
+publish again, briefly retrying while the new topic becomes visible.
 
 Message attributes are always a plain ``map<string, string>`` on the wire, unlike
 AMQP's richer field-table headers - so every Mersal header value round-trips as a
